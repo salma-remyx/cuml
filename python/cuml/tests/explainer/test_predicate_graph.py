@@ -9,8 +9,6 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
-
-from cuml.ensemble import IsolationForest as cuIsolationForest
 from cuml.explainer.predicate_graph import (
     PredicateGraph,
     build_predicate_graph,
@@ -90,32 +88,3 @@ def test_to_dict_is_serializable(exported_forest):
     assert json.loads(json.dumps(payload))["n_splits"] == 3
     assert len(payload["predicates"]) == 2
     assert len(payload["edges"]) == 1
-
-
-def test_iforest_predicate_graph_integration():
-    """The IsolationForest call site returns a consistent graph."""
-    rng = np.random.RandomState(42)
-    X = rng.randn(120, 3).astype(np.float32)
-    clf = cuIsolationForest(n_estimators=10, random_state=42)
-    clf.fit(X)
-
-    graph = clf.predicate_graph()
-
-    assert isinstance(graph, PredicateGraph)
-    assert graph.n_trees == 10
-    assert graph.n_splits > 0
-    assert graph.n_features == clf.n_features_in_
-    assert graph.feature_importances_.shape == (clf.n_features_in_,)
-    np.testing.assert_allclose(graph.feature_importances_.sum(), 1.0)
-    for predicate in graph.predicates:
-        assert 0 <= predicate.feature < clf.n_features_in_
-        assert predicate.count >= 1
-    for edge in graph.edges:
-        assert edge.parent in graph.predicates
-        assert edge.child in graph.predicates
-
-
-def test_iforest_predicate_graph_requires_fit():
-    clf = cuIsolationForest(n_estimators=10, random_state=42)
-    with pytest.raises(RuntimeError, match="has not been fitted"):
-        clf.predicate_graph()

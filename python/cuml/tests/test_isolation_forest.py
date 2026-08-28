@@ -18,12 +18,12 @@ import cupy as cp
 import numpy as np
 import pytest
 import treelite
-from sklearn.datasets import make_blobs
-from sklearn.ensemble import IsolationForest as skIsolationForest
-
 from cuml import IsolationForest as cuIsolationForest
+from cuml.explainer.predicate_graph import PredicateGraph
 from cuml.internals.interop import UnsupportedOnGPU
 from cuml.testing.utils import stress_param, unit_param
+from sklearn.datasets import make_blobs
+from sklearn.ensemble import IsolationForest as skIsolationForest
 
 # =============================================================================
 # Fixtures for test data
@@ -476,9 +476,8 @@ def test_sync_attrs_to_cpu_populates_target(blobs_data):
 
 def test_invert_average_path_length_roundtrip():
     """Recovered counts invert sklearn's average path length exactly."""
-    from sklearn.ensemble._iforest import _average_path_length
-
     from cuml.ensemble.isolation_forest import _invert_average_path_length
+    from sklearn.ensemble._iforest import _average_path_length
 
     for n in (1, 2, 3, 10, 256, 5000):
         value = float(_average_path_length(np.asarray([n]))[0])
@@ -487,9 +486,8 @@ def test_invert_average_path_length_roundtrip():
 
 def test_invert_average_path_length_fails_loudly():
     """Values matching no count, or more than one, raise a clear error."""
-    from sklearn.ensemble._iforest import _average_path_length
-
     from cuml.ensemble.isolation_forest import _invert_average_path_length
+    from sklearn.ensemble._iforest import _average_path_length
 
     with pytest.raises(ValueError, match="negative"):
         _invert_average_path_length(-0.5)
@@ -1017,3 +1015,32 @@ def test_train_on_pure_data_detect_outliers():
     assert detected_outliers >= 2, (
         f"Should detect at least 2 of 3 injected outliers, got {detected_outliers}"
     )
+
+
+def test_iforest_predicate_graph_integration():
+    """The IsolationForest call site returns a consistent graph."""
+    rng = np.random.RandomState(42)
+    X = rng.randn(120, 3).astype(np.float32)
+    clf = cuIsolationForest(n_estimators=10, random_state=42)
+    clf.fit(X)
+
+    graph = clf.predicate_graph()
+
+    assert isinstance(graph, PredicateGraph)
+    assert graph.n_trees == 10
+    assert graph.n_splits > 0
+    assert graph.n_features == clf.n_features_in_
+    assert graph.feature_importances_.shape == (clf.n_features_in_,)
+    np.testing.assert_allclose(graph.feature_importances_.sum(), 1.0)
+    for predicate in graph.predicates:
+        assert 0 <= predicate.feature < clf.n_features_in_
+        assert predicate.count >= 1
+    for edge in graph.edges:
+        assert edge.parent in graph.predicates
+        assert edge.child in graph.predicates
+
+
+def test_iforest_predicate_graph_requires_fit():
+    clf = cuIsolationForest(n_estimators=10, random_state=42)
+    with pytest.raises(RuntimeError, match="has not been fitted"):
+        clf.predicate_graph()
