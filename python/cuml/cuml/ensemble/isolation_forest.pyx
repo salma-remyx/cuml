@@ -670,6 +670,29 @@ class IsolationForest(InteropMixin, CMajorInputTagMixin, Base):
             handle=get_handle(),
         )
 
+    def predicate_graph(self):
+        """
+        Build a global decision-predicate graph for this fitted forest.
+
+        Aggregates the split predicates ``(feature, threshold)`` of every
+        isolation tree into a forest-wide summary: how often each
+        predicate is used and at which depth, which predicates co-occur
+        along root-to-leaf paths, and the resulting per-feature split
+        importances. This is a global, structure-level explanation of the
+        ensemble, complementary to the local SHAP explainers in
+        ``cuml.explainer``.
+
+        Returns
+        -------
+        cuml.explainer.predicate_graph.PredicateGraph
+        """
+        if not hasattr(self, "_treelite_model_bytes"):
+            raise RuntimeError("Model has not been fitted. Call fit() first.")
+
+        from cuml.explainer.predicate_graph import build_predicate_graph
+
+        return build_predicate_graph(self.as_treelite())
+
     def _get_inference_nvforest_model(self):
         if (nvforest_model := getattr(self, "_nvforest_model", None)) is None:
             self._nvforest_model = nvforest_model = self.as_nvforest()

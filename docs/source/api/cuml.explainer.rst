@@ -13,3 +13,5 @@ cuml.explainer
    KernelExplainer
    PermutationExplainer
    TreeExplainer
+   PredicateGraph
+   build_predicate_graph
